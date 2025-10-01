@@ -1,0 +1,16 @@
+serviceAccount:
+  create: false
+  name: obs-sa
+
+tolerations:
+  - operator: "Exists"   # 노드에 taint 있어도 동작 (선택)
+
+config:
+  clients:
+    - url: http://loki-loki-distributed-gateway.monitoring.svc.cluster.local/loki/api/v1/push
+      external_labels:
+        cluster: my-eks-shop-cluster
+  snippets:
+    pipelineStages:
+      - cri: {}        # containerd CRI 로그 파싱
+  # 기본 k8s scrape_config는 chart가 넣어줌

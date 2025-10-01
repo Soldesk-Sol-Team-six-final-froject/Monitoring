@@ -1,0 +1,15 @@
+# 예시: thanos-objstore-aws.yaml (Secret)
+apiVersion: v1
+kind: Secret
+metadata:
+  name: thanos-objstore
+  namespace: monitoring
+stringData:
+  objstore.yml: |
+    type: S3
+    config:
+      bucket: THANOS_BUCKET_NAME
+      endpoint: s3.${AWS_REGION}.amazonaws.com
+      region: AWS_REGION
+      insecure: false
+

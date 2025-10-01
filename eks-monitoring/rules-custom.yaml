@@ -1,0 +1,94 @@
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: custom-rules
+  namespace: monitoring
+  labels:
+    release: kps
+spec:
+  groups:
+  - name: shop.workloads.rules
+    rules:
+    # 파드 CPU 경고 (요청 대비 >70%)
+    - alert: ShopPodCPUWarning
+      expr: |
+        (
+          sum by (namespace,pod) (rate(container_cpu_usage_seconds_total{namespace="shop",container!=""}[2m]))
+          /
+          sum by (namespace,pod) (kube_pod_container_resource_requests{namespace="shop",resource="cpu"})
+        ) * 100 > 70
+      for: 5m
+      labels:
+        severity: warning
+        scope: pod
+      annotations:
+        summary: "파드 CPU 과다 (요청 대비 >70%, 5분)"
+        description: >-
+          파드 {{ $labels.pod }}의 CPU 사용률이 **요청(requests) 대비** {{ printf "%.1f" $value }}% 입니다.
+          요청 대비 지표이므로 100% 초과는 버스트(요청 초과 사용)를 의미합니다.
+          권장 조치: (1) 파드의 requests 적정화, (2) HPA 스케일 아웃, (3) 필요 시 limits 설정 검토.
+        value: '{{ printf "%.1f" $value }}'
+        threshold: "70"
+        unit: "%"
+
+    # 파드 CPU 긴급 (요청 대비 >90%)
+    - alert: ShopPodCPUCritical
+      expr: |
+        (
+          sum by (namespace,pod) (rate(container_cpu_usage_seconds_total{namespace="shop",container!=""}[2m]))
+          /
+          sum by (namespace,pod) (kube_pod_container_resource_requests{namespace="shop",resource="cpu"})
+        ) * 100 > 90
+      for: 5m
+      labels:
+        severity: critical
+        scope: pod
+      annotations:
+        summary: "파드 CPU 과다 (요청 대비 >90%, 5분)"
+        description: >-
+          파드 {{ $labels.pod }}의 CPU 사용률이 **요청(requests) 대비** {{ printf "%.1f" $value }}% 입니다.
+          지속 시 사용자 체감 성능 저하 및 응답 지연이 발생할 수 있습니다.
+          권장 조치: (1) HPA 즉시 스케일 아웃, (2) 요청/리소스 재조정, (3) CPU 바운드 로직 최적화.
+        value: '{{ printf "%.1f" $value }}'
+        threshold: "90"
+        unit: "%"
+
+    # --- 디플로이먼트 가용성: shop-frontend ---
+    - alert: ShopFrontendAvailability
+      expr: |
+        kube_deployment_status_replicas_available{namespace="shop",deployment="shop-frontend"}
+        < kube_deployment_spec_replicas{namespace="shop",deployment="shop-frontend"}
+      for: 2m
+      labels:
+        severity: warning
+        scope: deployment
+      annotations:
+        summary: "shop-frontend 가용 인스턴스 부족"
+        description: "shop-frontend 가용 복제수({{ $value }})가 설정된 복제수보다 부족."
+
+    # --- 디플로이먼트 가용성: shop-backend ---
+    - alert: ShopBackendAvailability
+      expr: |
+        kube_deployment_status_replicas_available{namespace="shop",deployment="shop-backend"}
+        < kube_deployment_spec_replicas{namespace="shop",deployment="shop-backend"}
+      for: 2m
+      labels:
+        severity: warning
+        scope: deployment
+      annotations:
+        summary: "shop-backend 가용 인스턴스 부족"
+        description: "shop-backend 가용 복제수({{ $value }})가 설정된 복제수보다 부족."
+
+    # --- 파드 재시작 급증 (shop 네임스페이스) ---
+    - alert: ShopPodRestarts
+      expr: |
+        sum by (namespace,pod) (rate(kube_pod_container_status_restarts_total{namespace="shop"}[5m])) > 0
+      for: 5m
+      labels:
+        severity: warning
+        scope: pod
+      annotations:
+        summary: "shop 파드 재시작 발생(5분 창)"
+        description: "파드 {{ $labels.pod }}에서 5분 내 컨테이너 재시작이 감지되었습니다."
+        value: '{{ printf "%.0f" $value }}'
+        unit: "restarts/5m"

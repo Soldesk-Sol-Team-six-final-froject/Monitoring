@@ -1,0 +1,26 @@
+serviceAccount:
+  create: false
+  name: obs-sa
+
+query:
+  enabled: true
+  stores:
+    - dnssrv+_grpc._tcp.prometheus-thanos-grpc.monitoring.svc.cluster.local
+    - dnssrv+_grpc._tcp.thanos-store-storegateway.monitoring.svc.cluster.local
+  service:
+    type: ClusterIP
+    ports: { grpc: 10901, http: 10902 }
+
+queryFrontend:
+  enabled: true
+  extraArgs:
+    - --query-frontend.downstream-url=http://thanos-query-query.monitoring.svc.cluster.local:9090
+
+bucketweb: { enabled: false }
+compactor: { enabled: false }
+storegateway: { enabled: false }
+ruler: { enabled: false }
+receive: { enabled: false }
+
+existingObjstoreSecret: thanos-objstore
+

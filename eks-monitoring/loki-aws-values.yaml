@@ -1,0 +1,113 @@
+serviceAccount:
+  create: false
+  name: obs-sa
+
+loki:
+  auth_enabled: false
+  commonConfig:
+    replication_factor: 1
+
+  config: |
+    server:
+      http_listen_port: 3100
+      grpc_listen_port: 9095
+
+    # 공통(모든 컴포넌트 공유) 설정
+    common:
+      ring:
+        kvstore:
+          store: memberlist
+      # ★ compactor 주소는 common 섹션에!
+      compactor_grpc_address: loki-loki-distributed-compactor.monitoring.svc.cluster.local:9095
+
+    memberlist:
+      join_members:
+        - loki-loki-distributed-memberlist
+
+    schema_config:
+      configs:
+      - from: 2024-01-01
+        store: boltdb-shipper
+        object_store: s3
+        schema: v13
+        index:
+          prefix: loki_index_
+          period: 24h
+
+    storage_config:
+      aws:
+        endpoint: s3.ap-northeast-2.amazonaws.com
+        region: '' # 리전 입력
+        bucketnames: '' # 버킷 이름 입력
+        s3forcepathstyle: false
+      boltdb_shipper:
+        shared_store: s3
+        active_index_directory: /var/loki/index
+        cache_location: /var/loki/index_cache
+
+    limits_config:
+      retention_period: 168h
+
+    compactor:
+      working_directory: /var/loki/boltdb-shipper-compactor
+      shared_store: s3
+      compaction_interval: 5m
+
+    # ★ WAL을 PVC가 붙는 경로로 (read-only /wal 에러 방지)
+    ingester:
+      wal:
+        enabled: true
+        dir: /var/loki/wal
+
+    querier:
+      max_concurrent: 20
+      query_ingesters_within: 2h
+
+    frontend:
+      log_queries_longer_than: 5s
+      compress_responses: true
+
+    frontend_worker:
+      frontend_address: loki-loki-distributed-query-frontend:9095
+      grpc_client_config:
+        max_send_msg_size: 104857600
+        max_recv_msg_size: 104857600
+
+    ruler:
+      enable_api: true
+      ring:
+        kvstore:
+          store: memberlist
+      storage:
+        type: s3
+        s3:
+          endpoint: s3.ap-northeast-2.amazonaws.com
+          bucketnames: '' # 버킷 이름 입력
+          region: '' # 리전 입력
+          s3forcepathstyle: false
+      rule_path: /tmp/loki/rules-temp
+      alertmanager_url: http://kps-alertmanager.monitoring.svc.cluster.local:9093
+
+compactor:
+  enabled: true
+  persistence:
+    enabled: true
+    size: 10Gi
+  storageClass: gp3      # ← EKS
+
+ingester:
+  persistence:
+    enabled: true
+    size: 20Gi
+    storageClass: gp3
+  # ▼▼▼ OOMKilled 문제 해결을 위해 추가한 부분 ▼▼▼
+  resources:
+    requests:
+      memory: 1Gi
+    limits:
+      memory: 2Gi
+
+
+gateway:
+  service:
+    type: ClusterIP

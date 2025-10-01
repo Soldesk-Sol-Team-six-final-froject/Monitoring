@@ -1,0 +1,126 @@
+fullnameOverride: kps
+
+grafana:
+  adminUser: admin
+  adminPassword: admin
+  serviceAccount:                # ← Pod Identity로 통일(테스트용)
+    create: false
+    name: obs-sa
+  sidecar:
+    datasources:
+      enabled: true
+      label: grafana_datasource
+  extraObjects:
+    - apiVersion: v1
+      kind: ConfigMap
+      metadata:
+        name: grafana-datasources
+        namespace: monitoring
+        labels: { grafana_datasource: "1" }
+      data:
+        thanos.yaml: |
+          apiVersion: 1
+          datasources:
+          - name: Thanos
+            type: prometheus
+            access: proxy
+            url: http://thanos-query-query.monitoring.svc.cluster.local:10902
+            isDefault: true
+        loki.yaml: |
+          apiVersion: 1
+          datasources:
+          - name: Loki
+            type: loki
+            access: proxy
+            url: http://loki-loki-distributed-gateway.monitoring.svc.cluster.local
+
+prometheus:
+  serviceAccount:                # ← Thanos 사이드카도 이 SA로 S3 접근
+    create: false
+    name: obs-sa
+  prometheusSpec:
+    replicas: 1
+    retention: 12h
+    walCompression: true
+
+    # ★ 전 네임스페이스의 Service/Pod/Probe/Rule 모두 인식
+    serviceMonitorSelectorNilUsesHelmValues: false
+    podMonitorSelectorNilUsesHelmValues: false
+    probeSelectorNilUsesHelmValues: false
+    ruleSelectorNilUsesHelmValues: false
+    serviceMonitorNamespaceSelector: {}
+    podMonitorNamespaceSelector: {}
+    probeNamespaceSelector: {}
+    ruleNamespaceSelector: {}
+
+    # ★ EKS용 PV: gp3가 기본이면 gp3, gp2면 gp2로 변경
+    storageSpec:
+      volumeClaimTemplate:
+        spec:
+          storageClassName: gp3     # ← 클러스터 기본이 gp2면 gp2로 바꾸세요
+          accessModes: ["ReadWriteOnce"]
+          resources:
+            requests:
+              storage: 20Gi
+
+    # ★ Thanos 사이드카가 S3 사용 (이미 만든 Secret)
+    thanos:
+      objectStorageConfig:
+        existingSecret:
+          name: thanos-objstore
+          key: objstore.yml
+
+# EKS 관리형 컨트롤플레인에서 불필요한 타깃은 끄면 잡음 ↓ (선택)
+kubeScheduler:
+  enabled: false
+kubeControllerManager:
+  enabled: false
+
+# 리소스 현황(KSM), 노드/컨테이너 지표(node-exporter+kubelet/cAdvisor)
+kubeStateMetrics:
+  enabled: true
+
+nodeExporter:
+  enabled: true
+  tolerations:
+    - operator: "Exists"   # 노드 taint 있어도 올라오게(선택)
+
+kubelet:
+  serviceMonitor:
+    https: true
+    cAdvisor: true
+
+# ★★ Helm 값 안에 전역 ServiceMonitor/PodMonitor 내장 (라벨만 달면 자동 수집)
+additionalServiceMonitors:
+  - name: sm-global
+    additionalLabels:
+      release: kps
+    namespaceSelector:
+      any: true
+    selector:
+      matchLabels:
+        metrics: "true"          # ← Service에 metrics=true 라벨이 있으면 수집
+    endpoints:
+      - port: metrics            # Service의 포트 "이름"
+        path: /metrics
+        interval: 30s
+
+additionalPodMonitors:
+  - name: pm-global
+    additionalLabels:
+      release: kps
+    namespaceSelector:
+      any: true
+    selector:
+      matchLabels:
+        prometheus.scrape: "true"  # ← Pod/Deployment에 이 라벨이 있으면 수집
+    podMetricsEndpoints:
+      - port: metrics              # 컨테이너 포트 "이름"
+        path: /metrics
+        interval: 30s
+
+alertmanager:
+  enabled: true
+  alertmanagerSpec:
+    configSecret: alertmanager-config
+    secrets: [slack-webhook]

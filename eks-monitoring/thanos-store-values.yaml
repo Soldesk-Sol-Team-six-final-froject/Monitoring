@@ -1,0 +1,19 @@
+serviceAccount:
+  create: false
+  name: obs-sa
+
+existingObjstoreSecret: thanos-objstore
+existingObjstoreSecretItems:
+  - key: objstore.yml
+    path: objstore.yml
+
+storegateway:
+  enabled: true
+  serviceAccount:
+    create: false
+    name: obs-sa
+  persistence:
+    enabled: true
+    size: 10Gi
+    storageClass: gp3
+

@@ -1,0 +1,95 @@
+apiVersion: v1
+kind: Secret
+metadata:
+  name: alertmanager-config
+  namespace: monitoring
+type: Opaque
+stringData:
+  alertmanager.yaml: |
+    global:
+      resolve_timeout: 5m
+
+    route:
+      receiver: 'slack-default'
+      group_by: ['alertname', 'namespace', 'severity']
+      group_wait: 30s
+      group_interval: 5m
+      repeat_interval: 12h
+      routes:
+      # 필요 없다면 Watchdog도 드롭 (원하면 이 블록을 주석 해제)
+      # - matchers:
+      #   - alertname="Watchdog"
+      #   receiver: null-receiver
+
+      # 이미 드롭한 InfoInhibitor도 유지하려면 다음 라인 추가
+      # - matchers:
+      #   - alertname="InfoInhibitor"
+      #   receiver: null-receiver
+
+      - matchers:
+        - severity="critical"
+        receiver: slack-critical
+      - matchers:
+        - severity="warning"
+        receiver: slack-warning
+
+    receivers:
+    - name: 'slack-default'
+      slack_configs:
+      - api_url_file: /etc/alertmanager/secrets/slack-webhook/url
+        channel: '#alert-manage'
+        send_resolved: true
+        title: >-
+          [{{ if eq .Status "firing" }}발생{{ else }}해제{{ end }}]
+          {{ .CommonLabels.alertname }} ({{ or .CommonLabels.severity "n/a" }})
+        text: |-
+          *네임스페이스:* {{ or .CommonLabels.namespace "n/a" }}
+          *요약:* {{ or .CommonAnnotations.summary .CommonLabels.alertname }}
+          *설명:* {{ or .CommonAnnotations.description "n/a" }}
+          {{- range .Alerts }}
+          • *알람:* {{ .Labels.alertname }}
+            | *대상:* {{ or .Labels.pod .Labels.deployment .Labels.instance .Labels.node "n/a" }}
+            {{- if or .Annotations.value .Annotations.threshold }}
+            | *현재값:* {{ if .Annotations.value }}{{ .Annotations.value }}{{ if .Annotations.unit }}{{ .Annotations.unit }}{{ end }}{{ end }}
+            | *임계값:* {{ if .Annotations.threshold }}{{ .Annotations.threshold }}{{ if .Annotations.unit }}{{ .Annotations.unit }}{{ end }}{{ end }}
+            {{- end }}
+            | *시작:* {{ (.StartsAt | tz "Asia/Seoul") | date "2006-01-02 15:04:05 MST" }}
+            | *종료:* {{ if eq .Status "firing" }}진행 중{{ else }}{{ (.EndsAt | tz "Asia/Seoul") | date "2006-01-02 15:04:05 MST" }}{{ end }}
+          {{- end }}
+          *라벨:* {{ .CommonLabels }}
+
+    - name: 'slack-warning'
+      slack_configs:
+      - api_url_file: /etc/alertmanager/secrets/slack-webhook/url
+        channel: '#alert-manage'
+        send_resolved: true
+        title: "⚠️ 경고: {{ .CommonLabels.alertname }}"
+        text: |-
+          {{- range .Alerts }}
+          • 대상: {{ or .Labels.pod .Labels.deployment .Labels.instance "n/a" }}
+          • 요약: {{ or .Annotations.summary "정보 없음" }}
+          • 설명: {{ or .Annotations.description "설명 없음" }}
+            {{- if or .Annotations.value .Annotations.threshold }}
+          • 지표: 현재 {{ if .Annotations.value }}{{ .Annotations.value }}{{ if .Annotations.unit }}{{ .Annotations.unit }}{{ end }}{{ end }} / 임계 {{ if .Annotations.threshold }}{{ .Annotations.threshold }}{{ if .Annotations.unit }}{{ .Annotations.unit }}{{ end }}{{ end }}
+            {{- end }}
+          • 시간: 시작 {{ (.StartsAt | tz "Asia/Seoul") | date "2006-01-02 15:04:05 MST" }} / {{ if eq .Status "firing" }}진행 중{{ else }}종료 {{ (.EndsAt | tz "Asia/Seoul") | date "2006-01-02 15:04:05 MST" }}{{ end }}
+          {{- end }}
+
+    - name: 'slack-critical'
+      slack_configs:
+      - api_url_file: /etc/alertmanager/secrets/slack-webhook/url
+        channel: '#alert-manage'
+        send_resolved: true
+        title: "🚨 긴급: {{ .CommonLabels.alertname }}"
+        text: |-
+          {{- range .Alerts }}
+          • 대상: {{ or .Labels.pod .Labels.deployment .Labels.instance "n/a" }}
+          • 요약: {{ or .Annotations.summary "정보 없음" }}
+          • 설명: {{ or .Annotations.description "설명 없음" }}
+            {{- if or .Annotations.value .Annotations.threshold }}
+          • 지표: 현재 {{ if .Annotations.value }}{{ .Annotations.value }}{{ if .Annotations.unit }}{{ .Annotations.unit }}{{ end }}{{ end }} / 임계 {{ if .Annotations.threshold }}{{ .Annotations.threshold }}{{ if .Annotations.unit }}{{ .Annotations.unit }}{{ end }}{{ end }}
+            {{- end }}
+          • 시간: 시작 {{ (.StartsAt | tz "Asia/Seoul") | date "2006-01-02 15:04:05 MST" }} / {{ if eq .Status "firing" }}진행 중{{ else }}종료 {{ (.EndsAt | tz "Asia/Seoul") | date "2006-01-02 15:04:05 MST" }}{{ end }}
+          {{- end }}
+
+

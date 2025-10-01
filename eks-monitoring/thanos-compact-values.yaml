@@ -1,0 +1,25 @@
+serviceAccount:
+  create: false
+  name: obs-sa
+
+compactor:
+  enabled: true
+  extraArgs:
+    - --retention.resolution-raw=14d
+    - --retention.resolution-5m=30d
+    - --retention.resolution-1h=180d
+  persistence:
+    enabled: true
+    size: 20Gi
+    storageClass: gp3      # ← EKS
+
+queryFrontend:
+  enabled: false
+
+query: { enabled: false }
+bucketweb: { enabled: false }
+storegateway: { enabled: false }
+ruler: { enabled: false }
+receive: { enabled: false }
+
+existingObjstoreSecret: thanos-objstore

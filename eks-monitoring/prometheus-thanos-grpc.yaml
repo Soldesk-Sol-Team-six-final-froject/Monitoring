@@ -1,0 +1,19 @@
+# prometheus-thanos-grpc.yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: prometheus-thanos-grpc
+  namespace: monitoring
+spec:
+  clusterIP: None
+  publishNotReadyAddresses: true
+  selector:
+    app.kubernetes.io/name: prometheus
+    app.kubernetes.io/instance: kps-prometheus   # ★ 네 파드 라벨과 일치
+    # (추가로 안전하게) prometheus: kps-prometheus 라벨도 쓰고 싶으면 아래 줄도 추가 가능
+    # prometheus: kps-prometheus
+  ports:
+    - name: grpc
+      port: 10901
+      targetPort: 10901
+      protocol: TCP
